@@ -180,7 +180,7 @@ func (h *Handler) SubmitResearch(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/research
 func (h *Handler) ListResearch(w http.ResponseWriter, r *http.Request) {
-	_, ok := authpkg.GetUserID(r)
+	userID, ok := authpkg.GetUserID(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -193,7 +193,7 @@ func (h *Handler) ListResearch(w http.ResponseWriter, r *http.Request) {
 	var args []interface{}
 
 	// Build query based on role
-	if roleTier == "administrator" || roleTier == "librarian" {
+	if roleTier == "administrator" || roleTier == "librarian" || roleTier == "researcher" {
 		// Can see all papers
 		if status != "" {
 			query = `SELECT rp.paper_id, rp.item_id, m.title, rp.authors, rp.co_authors, 
@@ -217,16 +217,30 @@ func (h *Handler) ListResearch(w http.ResponseWriter, r *http.Request) {
 			         ORDER BY rp.submitted_at DESC`
 		}
 	} else {
-		// Regular users see only published papers
-		query = `SELECT rp.paper_id, rp.item_id, m.title, rp.authors, rp.co_authors, 
-		                mm.abstract, mm.keywords, rp.publication_date, rp.doi, rp.journal, 
-		                rp.conference, m.status, m.access_tier, m.file_path, m.created_by, 
-		                rp.submitted_at, rp.reviewer_id, rp.review_notes, rp.reviewed_at
-		         FROM research_papers rp
-		         JOIN media_items m ON rp.item_id = m.item_id
-		         JOIN media_metadata mm ON m.item_id = mm.item_id
-		         WHERE m.status = 'published'
-		         ORDER BY rp.submitted_at DESC`
+		// Regular users see published papers + their own papers
+		if status != "" {
+			query = `SELECT rp.paper_id, rp.item_id, m.title, rp.authors, rp.co_authors, 
+			                mm.abstract, mm.keywords, rp.publication_date, rp.doi, rp.journal, 
+			                rp.conference, m.status, m.access_tier, m.file_path, m.created_by, 
+			                rp.submitted_at, rp.reviewer_id, rp.review_notes, rp.reviewed_at
+			         FROM research_papers rp
+			         JOIN media_items m ON rp.item_id = m.item_id
+			         JOIN media_metadata mm ON m.item_id = mm.item_id
+			         WHERE (m.status = 'published' OR m.created_by = $1) AND m.status = $2
+			         ORDER BY rp.submitted_at DESC`
+			args = append(args, userID, status)
+		} else {
+			query = `SELECT rp.paper_id, rp.item_id, m.title, rp.authors, rp.co_authors, 
+			                mm.abstract, mm.keywords, rp.publication_date, rp.doi, rp.journal, 
+			                rp.conference, m.status, m.access_tier, m.file_path, m.created_by, 
+			                rp.submitted_at, rp.reviewer_id, rp.review_notes, rp.reviewed_at
+			         FROM research_papers rp
+			         JOIN media_items m ON rp.item_id = m.item_id
+			         JOIN media_metadata mm ON m.item_id = mm.item_id
+			         WHERE m.status = 'published' OR m.created_by = $1
+			         ORDER BY rp.submitted_at DESC`
+			args = append(args, userID)
+		}
 	}
 
 	rows, err := h.db.Query(r.Context(), query, args...)
@@ -354,10 +368,10 @@ func (h *Handler) ReviewPaper(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Only staff can review
+	// Only researchers and administrators can review
 	roleTier, _ := authpkg.GetRoleTier(r)
-	if roleTier != "librarian" && roleTier != "administrator" {
-		writeError(w, http.StatusForbidden, "only staff can review research papers")
+	if roleTier != "researcher" && roleTier != "administrator" {
+		writeError(w, http.StatusForbidden, "only researchers and administrators can review research papers")
 		return
 	}
 
@@ -384,14 +398,23 @@ func (h *Handler) ReviewPaper(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
-	// Get item_id
-	var itemID string
+	// Get item_id and created_by to check if reviewer is not the author
+	var itemID, createdBy string
 	err = tx.QueryRow(ctx,
-		`SELECT item_id FROM research_papers WHERE paper_id = $1`,
+		`SELECT rp.item_id, m.created_by 
+		 FROM research_papers rp
+		 JOIN media_items m ON m.item_id = rp.item_id
+		 WHERE rp.paper_id = $1`,
 		paperID,
-	).Scan(&itemID)
+	).Scan(&itemID, &createdBy)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "research paper not found")
+		return
+	}
+
+	// Prevent authors from reviewing their own papers
+	if createdBy == userID {
+		writeError(w, http.StatusForbidden, "you cannot review your own research paper")
 		return
 	}
 

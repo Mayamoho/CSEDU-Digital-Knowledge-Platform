@@ -109,6 +109,10 @@ export function MyUploadsContent() {
         // For research papers, we need to get the paper_id first
         if (item.item_type === 'research') {
           const papers = await apiClient.listResearch({ status: 'draft' });
+          if (!papers || !papers.data || papers.data.length === 0) {
+            toast.error("Failed to load research papers");
+            return;
+          }
           const paper = papers.data.find((p: any) => p.item_id === item.item_id);
           
           if (paper) {
@@ -117,14 +121,22 @@ export function MyUploadsContent() {
             // Reload uploads
             const response = await apiClient.getMyUploads({ per_page: 50 });
             setUploads(response.data);
+          } else {
+            toast.error("Research paper not found");
           }
         }
       } catch (error) {
         console.error("Failed to submit for review:", error);
-        toast.error("Failed to submit for review");
+        toast.error(error instanceof Error ? error.message : "Failed to submit for review");
       } finally {
         setIsSubmitting(false);
       }
+    };
+
+    const handleViewDetails = () => {
+      const baseUrl = item.item_type === 'research' ? '/research' : 
+                      item.item_type === 'project' ? '/projects' : '/archive';
+      window.location.href = `${baseUrl}/${item.item_id}`;
     };
 
     return (
@@ -167,7 +179,7 @@ export function MyUploadsContent() {
                   {isSubmitting ? "Submitting..." : "Submit for Review"}
                 </Button>
               )}
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={handleViewDetails}>
                 View Details
               </Button>
             </div>

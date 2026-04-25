@@ -230,7 +230,7 @@ func main() {
 
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.Authenticate)
-				r.Use(middleware.RequireRole("librarian", "administrator"))
+				r.Use(middleware.RequireRole("researcher", "administrator"))
 				r.Post("/{paperId}/review", researchHandler.ReviewPaper)
 			})
 		})

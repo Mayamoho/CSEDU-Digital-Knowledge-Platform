@@ -188,6 +188,13 @@ func (h *Handler) BorrowBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Librarians cannot borrow books - they only monitor
+	roleTier, _ := authpkg.GetRoleTier(r)
+	if roleTier == "librarian" {
+		writeError(w, http.StatusForbidden, "librarians cannot borrow books")
+		return
+	}
+
 	var req struct {
 		CatalogID string `json:"catalog_id"`
 	}
@@ -257,7 +264,11 @@ func (h *Handler) ListLoans(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.db.Query(r.Context(),
-		`SELECT l.loan_id, c.title, l.checkout_date, l.due_date, l.return_date, l.status
+		`SELECT l.loan_id, c.title, 
+		        to_char(l.checkout_date, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		        to_char(l.due_date, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		        to_char(l.return_date, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		        l.status
 		 FROM loans l
 		 JOIN library_catalog c ON c.catalog_id = l.catalog_id
 		 WHERE l.user_id = $1
@@ -367,7 +378,11 @@ func (h *Handler) ListAllLoans(w http.ResponseWriter, r *http.Request) {
 	offsetIdx := len(args)
 
 	rows, err := h.db.Query(r.Context(),
-		`SELECT l.loan_id, u.email, c.title, l.checkout_date, l.due_date, l.return_date, l.status
+		`SELECT l.loan_id, u.email, c.title, 
+		        to_char(l.checkout_date, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		        to_char(l.due_date, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		        to_char(l.return_date, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		        l.status
 		 FROM loans l
 		 JOIN users u ON u.user_id = l.user_id
 		 JOIN library_catalog c ON c.catalog_id = l.catalog_id

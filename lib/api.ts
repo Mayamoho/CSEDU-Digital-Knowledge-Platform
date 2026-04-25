@@ -492,10 +492,10 @@ class APIClient {
     });
   }
 
-  async listResearch(status?: string): Promise<{ data: ResearchPaper[]; total: number }> {
-    const params = new URLSearchParams();
-    if (status) params.append('status', status);
-    return this.request(`/research?${params.toString()}`);
+  async listResearch(params?: { status?: string }): Promise<{ data: ResearchPaper[]; total: number }> {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.append('status', params.status);
+    return this.request(`/research?${searchParams.toString()}`);
   }
 
   async getResearch(paperId: string): Promise<ResearchPaper> {

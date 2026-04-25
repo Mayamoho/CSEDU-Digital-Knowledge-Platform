@@ -78,7 +78,6 @@ export const ROLE_PERMISSIONS: Record<RoleTier, string[]> = {
   librarian: [
     'view_public_catalog',
     'search_public',
-    'borrow_books',
     'view_member_content',
     'upload_projects',
     'use_ai_chat',

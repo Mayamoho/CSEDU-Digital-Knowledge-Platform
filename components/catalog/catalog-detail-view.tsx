@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import { apiClient } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ interface CatalogDetailViewProps {
 
 export function CatalogDetailView({ itemId }: CatalogDetailViewProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const [item, setItem] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isBorrowing, setIsBorrowing] = useState(false);
@@ -95,6 +97,7 @@ export function CatalogDetailView({ itemId }: CatalogDetailViewProps) {
   }
 
   const isAvailable = item.available_copies > 0;
+  const canBorrow = user?.role_tier !== 'librarian' && user?.role_tier !== 'public';
 
   return (
     <div className="container max-w-4xl px-4 py-8">
@@ -177,17 +180,27 @@ export function CatalogDetailView({ itemId }: CatalogDetailViewProps) {
                       {item.available_copies} of {item.total_copies} copies available
                     </p>
                   </div>
-                  <Button 
-                    onClick={handleBorrow}
-                    disabled={!isAvailable || isBorrowing}
-                  >
-                    <BookOpen className="h-4 w-4 mr-2" />
-                    {isBorrowing ? "Borrowing..." : "Borrow Book"}
-                  </Button>
+                  {canBorrow && (
+                    <Button 
+                      onClick={handleBorrow}
+                      disabled={!isAvailable || isBorrowing}
+                    >
+                      <BookOpen className="h-4 w-4 mr-2" />
+                      {isBorrowing ? "Borrowing..." : "Borrow Book"}
+                    </Button>
+                  )}
                 </div>
               </div>
 
               {/* Additional Info */}
+              {user?.role_tier === 'librarian' && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    As a librarian, you can monitor borrowing activity but cannot borrow books yourself.
+                  </AlertDescription>
+                </Alert>
+              )}
               {!isAvailable && (
                 <Alert>
                   <AlertCircle className="h-4 w-4" />

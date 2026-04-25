@@ -30,6 +30,11 @@ export function DashboardContent() {
   const [uploads, setUploads]   = useState<MediaItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Show librarian-specific dashboard
+  if (user?.role_tier === 'librarian') {
+    return <LibrarianDashboard />;
+  }
+
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -93,7 +98,7 @@ export function DashboardContent() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
         <StatsCard title="Active Loans"      value={isLoading ? null : stats?.activeLoans ?? 0}               icon={BookOpen}      href="/loans" />
         <StatsCard title="Overdue Items"     value={isLoading ? null : stats?.overdueLoans ?? 0}              icon={AlertTriangle} href="/loans?status=overdue" variant={stats?.overdueLoans ? "destructive" : "default"} />
-        <RoleGate allowedRoles={['staff', 'admin', 'ai_admin']}>
+        <RoleGate allowedRoles={['student', 'researcher', 'librarian', 'administrator']} hideIfUnauthorized>
           <StatsCard title="My Uploads"        value={isLoading ? null : stats?.uploads ?? 0}                   icon={Upload}        href="/my-uploads" />
         </RoleGate>
         <StatsCard title="Outstanding Fines" value={isLoading ? null : `${stats?.totalFines ?? 0} BDT`}       icon={Clock}         href="/fines" variant={stats?.totalFines ? "warning" : "default"} />
@@ -109,7 +114,7 @@ export function DashboardContent() {
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2">
               <QuickActionButton href="/catalog"  icon={Library}  label="Browse Catalog"        description="Search library resources" />
-              <RoleGate allowedRoles={['staff', 'admin', 'ai_admin']}>
+              <RoleGate allowedRoles={['student', 'researcher', 'librarian', 'administrator']} hideIfUnauthorized>
                 <QuickActionButton href="/upload"   icon={Upload}   label="Upload Media"           description="Share documents" />
               </RoleGate>
               <QuickActionButton href="/research" icon={FileText} label="Research Repository"    description="Explore papers" />
@@ -183,7 +188,7 @@ export function DashboardContent() {
           </CardContent>
         </Card>
 
-        <RoleGate allowedRoles={['staff', 'admin', 'ai_admin']}>
+        <RoleGate allowedRoles={['student', 'researcher', 'librarian', 'administrator']} hideIfUnauthorized>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
@@ -296,5 +301,182 @@ function DashboardSkeleton() {
         ))}
       </div>
     </div>
+  );
+}
+
+// Librarian-specific dashboard
+function LibrarianDashboard() {
+  const { user } = useAuth();
+  const [allLoans, setAllLoans] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const loansRes = await apiClient.adminListLoans({ per_page: 100 });
+        setAllLoans(loansRes.data);
+      } catch (error) {
+        console.error("Failed to load loans:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  if (isLoading) return <DashboardSkeleton />;
+
+  const activeLoans = allLoans.filter(l => l.status === 'active');
+  const overdueLoans = allLoans.filter(l => l.status === 'overdue');
+
+  return (
+    <>
+      <div className="mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+              Librarian Dashboard
+            </h1>
+            <p className="mt-1 text-muted-foreground">Monitor library operations and member activity</p>
+          </div>
+          <Badge variant="secondary" className="w-fit">
+            {ROLE_DISPLAY_NAMES[user?.role_tier as RoleTier]}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <BookOpen className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Active Loans</p>
+                <p className="text-2xl font-semibold">{activeLoans.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Overdue Items</p>
+                <p className="text-2xl font-semibold">{overdueLoans.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600">
+                <User className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Members</p>
+                <p className="text-2xl font-semibold">{new Set(allLoans.map(l => l.user_id)).size}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10 text-green-600">
+                <Library className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Loans</p>
+                <p className="text-2xl font-semibold">{allLoans.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Quick Actions */}
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="text-lg">Quick Actions</CardTitle>
+          <CardDescription>Common librarian tasks</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <QuickActionButton href="/catalog" icon={Library} label="Manage Catalog" description="Add or update books" />
+            <QuickActionButton href="/fines" icon={Clock} label="Fine Management" description="Monitor member fines" />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Active Loans */}
+      <Card className="mb-8">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-lg">Active Loans</CardTitle>
+            <CardDescription>Currently borrowed books</CardDescription>
+          </div>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/loans">View all <ArrowRight className="ml-1 h-4 w-4" /></Link>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {activeLoans.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No active loans</p>
+          ) : (
+            <div className="space-y-3">
+              {activeLoans.slice(0, 5).map((loan) => (
+                <div key={loan.loan_id} className="flex items-center justify-between p-3 rounded-lg border border-border">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10">
+                      <BookOpen className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm line-clamp-1">{loan.title}</p>
+                      <p className="text-xs text-muted-foreground">{loan.user_email} • Due: {new Date(loan.due_date).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary">Active</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Overdue Loans */}
+      {overdueLoans.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Overdue Items</CardTitle>
+            <CardDescription>Items that need attention</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {overdueLoans.slice(0, 5).map((loan) => (
+                <div key={loan.loan_id} className="flex items-center justify-between p-3 rounded-lg border border-destructive/20 bg-destructive/5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-destructive/10">
+                      <AlertTriangle className="h-4 w-4 text-destructive" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm line-clamp-1">{loan.title}</p>
+                      <p className="text-xs text-muted-foreground">{loan.user_email} • Due: {new Date(loan.due_date).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                  <Badge variant="destructive">Overdue</Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </>
   );
 }
