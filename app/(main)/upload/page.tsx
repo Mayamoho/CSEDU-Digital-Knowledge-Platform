@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { UploadForm } from "@/components/upload/upload-form";
 import { UploadPageClient } from "./upload-client";
+import { AuthGuard } from "@/components/auth/auth-guard";
 
 export const metadata: Metadata = {
   title: "Upload Media",
@@ -8,5 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default function UploadPage() {
-  return <UploadPageClient />;
+  return (
+    <AuthGuard requireAuth allowedRoles={['staff', 'admin', 'ai_admin']}>
+      <UploadPageClient />
+    </AuthGuard>
+  );
 }

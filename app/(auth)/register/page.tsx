@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -9,8 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { BookOpen, AlertCircle, Check } from "lucide-react";
+import { BookOpen, AlertCircle, Check, User, GraduationCap, FlaskConical, Book } from "lucide-react";
+import { ROLE_DISPLAY_NAMES, type RoleTier } from "@/lib/types";
 
 const passwordRequirements = [
   { label: "At least 8 characters", test: (p: string) => p.length >= 8 },
@@ -19,6 +22,14 @@ const passwordRequirements = [
   { label: "Contains lowercase letter", test: (p: string) => /[a-z]/.test(p) },
 ];
 
+const roleDescriptions: Record<RoleTier, string> = {
+  public: "Browse public archives and view student projects",
+  student: "Upload projects, research, and archives. Access library resources.",
+  researcher: "Manage research publications and access restricted archives",
+  librarian: "Manage library catalog, loans, and memberships",
+  administrator: "Full system administration and user management",
+};
+
 export default function RegisterPage() {
   const router = useRouter();
   const { register } = useAuth();
@@ -26,6 +37,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [role, setRole] = useState<RoleTier>("student");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -49,7 +61,7 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      await register({ email, password, name });
+      await register({ email, password, name, role });
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed. Please try again.");
@@ -117,6 +129,56 @@ export default function RegisterPage() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Use your university email for member access
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="role">User Type</Label>
+                <Select value={role} onValueChange={(value: RoleTier) => setRole(value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select your role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="student">
+                      <div className="flex items-center gap-2">
+                        <GraduationCap className="h-4 w-4" />
+                        <div>
+                          <div className="font-medium">Student</div>
+                          <div className="text-xs text-muted-foreground">Undergrad/MSc/PhD</div>
+                        </div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="researcher">
+                      <div className="flex items-center gap-2">
+                        <FlaskConical className="h-4 w-4" />
+                        <div>
+                          <div className="font-medium">Researcher</div>
+                          <div className="text-xs text-muted-foreground">Faculty & Researchers</div>
+                        </div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="librarian">
+                      <div className="flex items-center gap-2">
+                        <Book className="h-4 w-4" />
+                        <div>
+                          <div className="font-medium">Librarian</div>
+                          <div className="text-xs text-muted-foreground">Library Administration</div>
+                        </div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="public">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        <div>
+                          <div className="font-medium">Public User</div>
+                          <div className="text-xs text-muted-foreground">Limited Access</div>
+                        </div>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {roleDescriptions[role]}
                 </p>
               </div>
 

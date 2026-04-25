@@ -1,14 +1,14 @@
 // CSEDU Digital Knowledge Platform - Type Definitions
 // Based on SDD v1.0 Core Entities
 
-// User Roles (RBAC)
-export type RoleTier = 'public' | 'member' | 'staff' | 'admin' | 'ai_admin';
+// User Roles (RBAC) - Based on SDD Target User Groups
+export type RoleTier = 'public' | 'student' | 'researcher' | 'librarian' | 'administrator';
 
 // Media Status
 export type MediaStatus = 'draft' | 'review' | 'published' | 'archived';
 
 // Access Tiers
-export type AccessTier = 'public' | 'member' | 'staff' | 'restricted';
+export type AccessTier = 'public' | 'student' | 'researcher' | 'librarian' | 'restricted';
 
 // Fine Status
 export type FineStatus = 'pending' | 'paid' | 'waived';
@@ -41,18 +41,41 @@ export type MediaFormat =
   | 'png' 
   | 'gif';
 
-// Role permissions mapping
+// Role permissions mapping - Based on SDD Target User Groups
 export const ROLE_PERMISSIONS: Record<RoleTier, string[]> = {
-  public: ['view_public_catalog', 'search_public'],
-  member: [
+  public: [
+    'view_public_catalog', 
+    'search_public',
+    'browse_archives',
+    'view_projects',
+    'download_public_research',
+  ],
+  student: [
     'view_public_catalog',
     'search_public',
     'borrow_books',
     'view_member_content',
     'upload_projects',
+    'upload_research',
+    'upload_archive',
     'use_ai_chat',
+    'track_borrowing_history',
   ],
-  staff: [
+  researcher: [
+    'view_public_catalog',
+    'search_public',
+    'borrow_books',
+    'view_member_content',
+    'upload_projects',
+    'upload_research',
+    'upload_archive',
+    'use_ai_chat',
+    'manage_research',
+    'manage_media_metadata',
+    'access_restricted_archives',
+    'receive_ai_insights',
+  ],
+  librarian: [
     'view_public_catalog',
     'search_public',
     'borrow_books',
@@ -61,44 +84,37 @@ export const ROLE_PERMISSIONS: Record<RoleTier, string[]> = {
     'use_ai_chat',
     'manage_catalog',
     'manage_loans',
-    'view_staff_content',
-    'upload_media',
-    'manage_research',
+    'manage_memberships',
+    'track_overdues',
+    'bulk_upload_catalog',
+    'scan_barcodes',
+    'answer_patron_queries',
   ],
-  admin: [
+  administrator: [
     'view_public_catalog',
     'search_public',
     'borrow_books',
     'view_member_content',
     'upload_projects',
+    'upload_research',
+    'upload_archive',
     'use_ai_chat',
+    'manage_research',
+    'manage_media_metadata',
+    'access_restricted_archives',
+    'receive_ai_insights',
     'manage_catalog',
     'manage_loans',
-    'view_staff_content',
-    'upload_media',
-    'manage_research',
+    'manage_memberships',
+    'track_overdues',
+    'bulk_upload_catalog',
+    'scan_barcodes',
+    'answer_patron_queries',
     'manage_users',
-    'view_audit_logs',
-    'manage_permissions',
-  ],
-  ai_admin: [
-    'view_public_catalog',
-    'search_public',
-    'borrow_books',
-    'view_member_content',
-    'upload_projects',
-    'use_ai_chat',
-    'manage_catalog',
-    'manage_loans',
-    'view_staff_content',
-    'upload_media',
-    'manage_research',
-    'manage_users',
-    'view_audit_logs',
     'manage_permissions',
     'configure_ai_models',
-    'view_ai_analytics',
-    'manage_embeddings',
+    'monitor_ai_performance',
+    'view_audit_logs',
   ],
 };
 
@@ -111,17 +127,18 @@ export function hasPermission(role: RoleTier, permission: string): boolean {
 export function canAccessContent(userRole: RoleTier, contentAccessTier: AccessTier): boolean {
   const accessHierarchy: Record<AccessTier, number> = {
     public: 0,
-    member: 1,
-    staff: 2,
+    student: 1,
+    researcher: 2,
+    librarian: 2,
     restricted: 3,
   };
 
   const roleAccessLevel: Record<RoleTier, number> = {
     public: 0,
-    member: 1,
-    staff: 2,
-    admin: 3,
-    ai_admin: 3,
+    student: 1,
+    researcher: 2,
+    librarian: 2,
+    administrator: 3,
   };
 
   return roleAccessLevel[userRole] >= accessHierarchy[contentAccessTier];
@@ -130,10 +147,10 @@ export function canAccessContent(userRole: RoleTier, contentAccessTier: AccessTi
 // Display names for roles
 export const ROLE_DISPLAY_NAMES: Record<RoleTier, string> = {
   public: 'Public User',
-  member: 'Member',
-  staff: 'Staff',
-  admin: 'Administrator',
-  ai_admin: 'AI Administrator',
+  student: 'Student',
+  researcher: 'Researcher',
+  librarian: 'Librarian',
+  administrator: 'Administrator',
 };
 
 // Display names for media status

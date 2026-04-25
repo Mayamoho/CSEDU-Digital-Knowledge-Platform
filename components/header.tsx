@@ -40,8 +40,10 @@ const mainNavItems = [
   { href: "/projects", label: "Projects", icon: BookOpen },
 ];
 
-const memberNavItems = [
-  { href: "/ai-chat", label: "AI Assistant", icon: Bot },
+const uploadNavItems = [
+  { href: "/upload/research", label: "Upload Research", icon: Upload },
+  { href: "/upload/projects", label: "Upload Projects", icon: Upload },
+  { href: "/upload/archive", label: "Upload Archive", icon: Upload },
 ];
 
 export function Header() {
@@ -60,10 +62,9 @@ export function Header() {
 
   const getRoleBadgeVariant = (role: RoleTier) => {
     switch (role) {
-      case "admin":
-      case "ai_admin":
+      case "administrator":
         return "default";
-      case "staff":
+      case "librarian":
         return "secondary";
       default:
         return "outline";
@@ -71,7 +72,7 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-backdrop-filter:bg-card/60">
       <div className="container flex h-16 items-center justify-between px-4">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
@@ -99,8 +100,10 @@ export function Header() {
               {item.label}
             </Link>
           ))}
-          {isAuthenticated &&
-            memberNavItems.map((item) => (
+          
+          {/* Upload navigation */}
+          {isAuthenticated && user && (user.role_tier === 'student' || user.role_tier === 'researcher' || user.role_tier === 'librarian' || user.role_tier === 'administrator') &&
+            uploadNavItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -158,12 +161,15 @@ export function Header() {
                     Dashboard
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/upload" className="cursor-pointer">
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload Media
-                  </Link>
-                </DropdownMenuItem>
+                {/* Staff+ only upload link */}
+                {(user.role_tier === 'student' || user.role_tier === 'researcher' || user.role_tier === 'librarian' || user.role_tier === 'administrator') && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/upload" className="cursor-pointer">
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload Media
+                    </Link>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem asChild>
                   <Link href="/profile" className="cursor-pointer">
                     <User className="mr-2 h-4 w-4" />
@@ -234,23 +240,6 @@ export function Header() {
                 {item.label}
               </Link>
             ))}
-            {isAuthenticated &&
-              memberNavItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                    pathname === item.href
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  )}
-                >
-                  <item.icon className="h-5 w-5" />
-                  {item.label}
-                </Link>
-              ))}
             {!isAuthenticated && (
               <div className="flex flex-col gap-2 pt-4 border-t border-border">
                 <Button variant="outline" asChild className="w-full">

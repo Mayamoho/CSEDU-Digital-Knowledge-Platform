@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AuthProvider } from '@/lib/auth-context'
 import { Toaster } from '@/components/ui/sonner'
+import { FloatingChatWidget } from '@/components/ai-chat/floating-chat-widget'
 import './globals.css'
 
 const inter = Inter({ 
@@ -57,6 +58,7 @@ export default function RootLayout({
         <AuthProvider>
           {children}
           <Toaster />
+          <FloatingChatWidget />
         </AuthProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

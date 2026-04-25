@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { useAuth } from "@/lib/auth-context";
 import { apiClient } from "@/lib/api";
+import { RoleGate } from "@/components/auth/role-gate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,43 +30,81 @@ import {
   AlertCircle,
   CheckCircle2,
   Info,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
+
+interface UploadFormProps {
+  defaultAccessTier?: string;
+  allowedFormats?: string[];
+  title?: string;
+  description?: string;
+  itemType?: 'archive' | 'research' | 'project';
+}
+
+interface UploadedFile {
+  file: File;
+  preview: string;
+}
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
 const accessTiers = [
   { value: "public", label: "Public", description: "Visible to everyone" },
-  { value: "member", label: "Members Only", description: "Requires login" },
-  { value: "staff", label: "Staff Only", description: "Staff and admins only" },
+  { value: "student", label: "Students+", description: "Students and above" },
+  { value: "researcher", label: "Researchers+", description: "Researchers and above" },
+  { value: "librarian", label: "Librarians+", description: "Librarians and above" },
   { value: "restricted", label: "Restricted", description: "Admin approval required" },
 ];
 
 const mediaFormats = [
-  { value: "pdf", label: "PDF Document", accept: ".pdf" },
-  { value: "docx", label: "Word Document", accept: ".docx,.doc" },
-  { value: "pptx", label: "PowerPoint", accept: ".pptx,.ppt" },
-  { value: "xlsx", label: "Excel Spreadsheet", accept: ".xlsx,.xls" },
-  { value: "mp4", label: "Video (MP4)", accept: ".mp4" },
-  { value: "mp3", label: "Audio (MP3)", accept: ".mp3" },
-  { value: "jpg", label: "Image (JPG/PNG)", accept: ".jpg,.jpeg,.png" },
+  { value: "pdf", label: "PDF Document", accept: "application/pdf", extensions: [".pdf"] },
+  { value: "docx", label: "Word Document", accept: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", extensions: [".docx"] },
+  { value: "doc", label: "Word Document (Legacy)", accept: "application/msword", extensions: [".doc"] },
+  { value: "pptx", label: "PowerPoint", accept: "application/vnd.openxmlformats-officedocument.presentationml.presentation", extensions: [".pptx"] },
+  { value: "ppt", label: "PowerPoint (Legacy)", accept: "application/vnd.ms-powerpoint", extensions: [".ppt"] },
+  { value: "xlsx", label: "Excel Spreadsheet", accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", extensions: [".xlsx"] },
+  { value: "xls", label: "Excel (Legacy)", accept: "application/vnd.ms-excel", extensions: [".xls"] },
+  { value: "mp4", label: "Video (MP4)", accept: "video/mp4", extensions: [".mp4"] },
+  { value: "mp3", label: "Audio (MP3)", accept: "audio/mpeg", extensions: [".mp3"] },
+  { value: "jpg", label: "Image (JPG)", accept: "image/jpeg", extensions: [".jpg", ".jpeg"] },
+  { value: "png", label: "Image (PNG)", accept: "image/png", extensions: [".png"] },
+  { value: "gif", label: "Image (GIF)", accept: "image/gif", extensions: [".gif"] },
 ];
 
-interface UploadedFile {
-  file: File;
-  preview?: string;
-}
+// Filter access tiers based on user role
+const getAvailableAccessTiers = (userRole: string | undefined) => {
+  if (!userRole) return accessTiers.filter(tier => tier.value === "public");
+  
+  switch (userRole) {
+    case "researcher":
+    case "librarian":
+    case "administrator":
+      return accessTiers; // All tiers available
+    case "student":
+      return accessTiers.filter(tier => tier.value !== "restricted");
+    default:
+      return accessTiers.filter(tier => tier.value === "public");
+  }
+};
 
-export function UploadForm() {
+export function UploadForm({ 
+  defaultAccessTier = "public", 
+  allowedFormats = ['pdf', 'docx', 'doc', 'pptx', 'mp4', 'mp3', 'jpg', 'png', 'gif'],
+  title = "Upload Media",
+  description = "Share your documents and media files with the CSEDU community.",
+  itemType = "archive"
+}: UploadFormProps) {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
   
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
-  const [title, setTitle] = useState("");
+  const [titleState, setTitle] = useState("");
   const [abstract, setAbstract] = useState("");
   const [keywords, setKeywords] = useState("");
-  const [accessTier, setAccessTier] = useState("public");
+  const [accessTier, setAccessTier] = useState(defaultAccessTier);
   const [language, setLanguage] = useState("en");
+  const [status, setStatus] = useState<"draft" | "review" | "published">("published");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState("");
@@ -76,8 +116,21 @@ export function UploadForm() {
     
     const file = acceptedFiles[0];
     
+    // Check file size
     if (file.size > MAX_FILE_SIZE) {
       setError("File size exceeds 50MB limit");
+      return;
+    }
+    
+    // Check file format
+    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+    const isAllowedFormat = allowedFormats.some(format => {
+      const formatInfo = mediaFormats.find(f => f.value === format);
+      return formatInfo?.extensions.some(ext => ext === fileExtension);
+    });
+    
+    if (!isAllowedFormat) {
+      setError(`File format not allowed. Allowed formats: ${allowedFormats.join(', ')}`);
       return;
     }
     
@@ -87,233 +140,183 @@ export function UploadForm() {
     });
     
     // Auto-fill title from filename
-    if (!title) {
+    if (!titleState) {
       const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
       setTitle(nameWithoutExt.replace(/[-_]/g, " "));
     }
-  }, [title]);
+  }, [titleState, allowedFormats]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     maxFiles: 1,
-    accept: {
-      "application/pdf": [".pdf"],
-      "application/msword": [".doc"],
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
-      "application/vnd.ms-powerpoint": [".ppt"],
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
-      "application/vnd.ms-excel": [".xls"],
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
-      "video/mp4": [".mp4"],
-      "audio/mpeg": [".mp3"],
-      "image/jpeg": [".jpg", ".jpeg"],
-      "image/png": [".png"],
-    },
+    accept: allowedFormats.reduce((acc, format) => {
+      const formatInfo = mediaFormats.find(f => f.value === format);
+      if (formatInfo) {
+        acc[formatInfo.accept] = formatInfo.extensions;
+      }
+      return acc;
+    }, {} as Record<string, string[]>),
   });
 
   const removeFile = () => {
-    if (uploadedFile?.preview) {
-      URL.revokeObjectURL(uploadedFile.preview);
-    }
     setUploadedFile(null);
+    setTitle("");
+    setAbstract("");
+    setKeywords("");
+    setError("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-
+    
     if (!uploadedFile) {
       setError("Please select a file to upload");
       return;
     }
-
-    if (!title.trim()) {
+    
+    if (!titleState.trim()) {
       setError("Please enter a title");
       return;
     }
-
+    
     setIsUploading(true);
     setUploadProgress(0);
-
+    
     try {
       const formData = new FormData();
-      formData.append("file", uploadedFile.file);
-      formData.append("title", title);
-      formData.append("abstract", abstract);
-      formData.append("keywords", keywords);
-      formData.append("access_tier", accessTier);
-      formData.append("language", language);
-
-      // Simulate upload progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return prev;
-          }
-          return prev + 10;
-        });
-      }, 200);
+      formData.append('file', uploadedFile.file);
+      formData.append('title', titleState);
+      formData.append('description', abstract);
+      formData.append('keywords', keywords);
+      formData.append('access_tier', accessTier);
+      formData.append('language', language);
+      formData.append('status', status);
+      formData.append('item_type', itemType);
 
       const result = await apiClient.uploadMedia(formData);
 
-      clearInterval(progressInterval);
-      setUploadProgress(100);
+      const statusMessage = status === 'published'
+        ? "File published successfully! It's now available to everyone."
+        : status === 'draft'
+        ? "File saved as draft! You can submit for review later."
+        : "File submitted for review! It will be reviewed by a librarian or researcher.";
 
-      toast.success("File uploaded successfully", {
-        description: "Your file has been uploaded and is being processed.",
-      });
-
-      router.push(`/media/${result.item_id}`);
+      toast.success(statusMessage);
+      removeFile();
+      
+      // Redirect based on item type
+      const redirectPath = itemType === 'archive' ? '/archive' 
+        : itemType === 'research' ? '/research'
+        : itemType === 'project' ? '/projects'
+        : '/my-uploads';
+      router.push(redirectPath);
+      
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed. Please try again.");
+      setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
     }
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   if (!isAuthenticated) {
     return (
       <Alert>
-        <Info className="h-4 w-4" />
+        <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          Please <a href="/login" className="font-medium text-primary hover:underline">sign in</a> to upload files.
+          Please <Link href="/login" className="font-medium text-primary hover:underline">sign in</Link> to upload files.
         </AlertDescription>
       </Alert>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* File Upload */}
+    <div className="max-w-4xl mx-auto space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">File</CardTitle>
-          <CardDescription>
-            Upload a document, video, or image (max 50MB)
-          </CardDescription>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
         </CardHeader>
-        <CardContent>
-          {!uploadedFile ? (
+        <CardContent className="space-y-6">
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* File Upload */}
+          <div className="space-y-2">
+            <Label>Upload File</Label>
             <div
               {...getRootProps()}
-              className={`
-                flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors cursor-pointer
-                ${isDragActive ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}
-              `}
+              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                isDragActive ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+              }`}
             >
-              <input {...getInputProps()} />
-              <Upload className="h-10 w-10 text-muted-foreground mb-4" />
-              <p className="text-sm text-muted-foreground text-center">
-                {isDragActive ? (
-                  "Drop the file here"
-                ) : (
-                  <>
-                    Drag and drop a file here, or <span className="text-primary font-medium">browse</span>
-                  </>
-                )}
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                PDF, DOCX, PPTX, XLSX, MP4, MP3, JPG, PNG
-              </p>
+              <input {...getInputProps()} className="hidden" />
+              {uploadedFile ? (
+                <div className="space-y-4">
+                  {uploadedFile.preview && (
+                    <img
+                      src={uploadedFile.preview}
+                      alt="Preview"
+                      className="mx-auto h-32 w-32 object-cover rounded-lg"
+                    />
+                  )}
+                  <div className="flex items-center gap-2 text-sm">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">{uploadedFile.file.name}</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {(uploadedFile.file.size / 1024 / 1024).toFixed(2)} MB
+                    </Badge>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={removeFile}
+                    disabled={isUploading}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <Upload className="mx-auto h-12 w-12 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    Drag and drop your file here, or click to select
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Maximum file size: 50MB
+                  </p>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="flex items-center gap-4 p-4 rounded-lg border border-border">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                <FileText className="h-6 w-6 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{uploadedFile.file.name}</p>
-                <p className="text-sm text-muted-foreground">
-                  {formatFileSize(uploadedFile.file.size)}
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={removeFile}
+          </div>
+
+          {/* Metadata */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="title">Title *</Label>
+              <Input
+                id="title"
+                value={titleState}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Enter a descriptive title"
                 disabled={isUploading}
-              >
-                <X className="h-4 w-4" />
-                <span className="sr-only">Remove file</span>
-              </Button>
+                required
+              />
             </div>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* Metadata */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Details</CardTitle>
-          <CardDescription>
-            Provide information about your upload
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="title">Title *</Label>
-            <Input
-              id="title"
-              placeholder="Enter a descriptive title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              disabled={isUploading}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="abstract">Abstract / Description</Label>
-            <Textarea
-              id="abstract"
-              placeholder="Provide a brief description of the content..."
-              value={abstract}
-              onChange={(e) => setAbstract(e.target.value)}
-              rows={4}
-              disabled={isUploading}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="keywords">Keywords</Label>
-            <Input
-              id="keywords"
-              placeholder="Separate keywords with commas"
-              value={keywords}
-              onChange={(e) => setKeywords(e.target.value)}
-              disabled={isUploading}
-            />
-            <p className="text-xs text-muted-foreground">
-              Keywords help with search and discovery
-            </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="accessTier">Access Level</Label>
               <Select value={accessTier} onValueChange={setAccessTier} disabled={isUploading}>
-                <SelectTrigger id="accessTier">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {accessTiers.map((tier) => (
+                  {getAvailableAccessTiers(user?.role_tier).map((tier) => (
                     <SelectItem key={tier.value} value={tier.value}>
                       <div className="flex flex-col">
                         <span>{tier.label}</span>
@@ -326,49 +329,97 @@ export function UploadForm() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="language">Language</Label>
-              <Select value={language} onValueChange={setLanguage} disabled={isUploading}>
-                <SelectTrigger id="language">
+              <Label htmlFor="status">Publication Status</Label>
+              <Select value={status} onValueChange={(value: "draft" | "review" | "published") => setStatus(value)} disabled={isUploading}>
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="en">English</SelectItem>
-                  <SelectItem value="bn">Bangla</SelectItem>
+                  <SelectItem value="published">
+                    <div className="flex flex-col">
+                      <span className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Publish Immediately
+                      </span>
+                      <span className="text-xs text-muted-foreground">Make available to everyone immediately</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="draft">
+                    <div className="flex flex-col">
+                      <span className="flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Save as Draft
+                      </span>
+                      <span className="text-xs text-muted-foreground">Continue editing later, submit for review when ready</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="review">
+                    <div className="flex flex-col">
+                      <span className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        Submit for Review
+                      </span>
+                      <span className="text-xs text-muted-foreground">Submit to librarian/researcher for approval</span>
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Upload Progress */}
-      {isUploading && (
-        <Card>
-          <CardContent className="py-4">
-            <div className="flex items-center gap-4">
-              <Spinner className="h-5 w-5" />
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Uploading...</span>
-                  <span className="text-sm text-muted-foreground">{uploadProgress}%</span>
-                </div>
-                <Progress value={uploadProgress} />
+          <div className="space-y-2">
+            <Label htmlFor="abstract">Abstract</Label>
+            <Textarea
+              id="abstract"
+              value={abstract}
+              onChange={(e) => setAbstract(e.target.value)}
+              placeholder="Provide a brief description of the content"
+              rows={3}
+              disabled={isUploading}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="keywords">Keywords</Label>
+            <Input
+              id="keywords"
+              value={keywords}
+              onChange={(e) => setKeywords(e.target.value)}
+              placeholder="Enter tags separated by commas (e.g., AI, machine learning, research)"
+              disabled={isUploading}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="language">Language</Label>
+            <Select value={language} onValueChange={setLanguage} disabled={isUploading}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="bn">বাংলা</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Upload Progress */}
+          {isUploading && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Spinner className="h-4 w-4" />
+                <span className="text-sm">Uploading...</span>
               </div>
+              <Progress value={uploadProgress} className="w-full" />
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
 
-      {/* Submit */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Uploaded by: <Badge variant="outline">{user?.name}</Badge>
-        </p>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" disabled={isUploading} onClick={() => router.back()}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={isUploading || !uploadedFile}>
+          <Button 
+            type="submit" 
+            onClick={handleSubmit}
+            disabled={!uploadedFile || !titleState.trim() || isUploading}
+            className="w-full"
+          >
             {isUploading ? (
               <>
                 <Spinner className="mr-2 h-4 w-4" />
@@ -376,13 +427,13 @@ export function UploadForm() {
               </>
             ) : (
               <>
-                <CheckCircle2 className="mr-2 h-4 w-4" />
+                <Upload className="mr-2 h-4 w-4" />
                 Upload File
               </>
             )}
           </Button>
-        </div>
-      </div>
-    </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

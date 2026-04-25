@@ -7,7 +7,7 @@ export interface User {
   user_id: string;
   email: string;
   name: string;
-  role_tier: 'public' | 'member' | 'staff' | 'admin' | 'ai_admin';
+  role_tier: 'public' | 'student' | 'researcher' | 'librarian' | 'administrator';
   created_at: string;
   last_login: string | null;
 }
@@ -27,17 +27,20 @@ export interface RegisterRequest {
   email: string;
   password: string;
   name: string;
+  role?: string;
 }
 
 export interface MediaItem {
   item_id: string;
   title: string;
+  item_type: string;
   format: string;
   status: 'draft' | 'review' | 'published' | 'archived';
-  access_tier: 'public' | 'member' | 'staff' | 'restricted';
+  access_tier: 'public' | 'student' | 'researcher' | 'librarian' | 'restricted';
   created_by: string;
   upload_date: string;
   file_path: string | null;
+  metadata?: MediaMetadata;
 }
 
 export interface MediaMetadata {
@@ -53,11 +56,121 @@ export interface LibraryCatalogItem {
   item_id: string;
   title: string;
   author: string;
-  isbn: string;
+  isbn: string | null;
   format: string;
   status: 'available' | 'borrowed' | 'reserved';
-  location: string;
+  location: string | null;
   cover_image: string | null;
+  year: number | null;
+  total_copies: number;
+  available_copies: number;
+}
+
+export interface LoanItem {
+  loan_id: string;
+  title: string;
+  checkout_date: string;
+  due_date: string;
+  return_date: string | null;
+  status: 'active' | 'returned' | 'overdue';
+}
+
+export interface AdminLoanItem extends LoanItem {
+  user_name: string;
+  user_email: string;
+  user_id: string;
+}
+
+export interface Fine {
+  fine_id: string;
+  loan_id: string;
+  user_id: string;
+  amount_bdt: number;
+  paid: boolean;
+  waived: boolean;
+  created_at: string;
+  paid_at: string | null;
+  waived_at: string | null;
+  waived_by: string | null;
+  title?: string;
+  due_date?: string;
+}
+
+export interface Payment {
+  payment_id: string;
+  fine_id: string;
+  user_id: string;
+  amount_bdt: number;
+  payment_method: string;
+  transaction_id: string | null;
+  payment_date: string;
+}
+
+export interface ResearchPaper {
+  paper_id: string;
+  item_id: string;
+  title: string;
+  authors: string[];
+  co_authors: string[];
+  abstract: string;
+  keywords: string[];
+  publication_date?: string;
+  doi?: string;
+  journal?: string;
+  conference?: string;
+  status: 'draft' | 'review' | 'published' | 'archived';
+  access_tier: string;
+  file_path?: string;
+  created_by: string;
+  submitted_at: string;
+  reviewer_id?: string;
+  review_notes?: string;
+  reviewed_at?: string;
+}
+
+export interface StudentProject {
+  project_id: string;
+  item_id: string;
+  title: string;
+  team_members: string[];
+  supervisor_id?: string;
+  academic_year: number;
+  course_code?: string;
+  abstract: string;
+  keywords: string[];
+  status: 'draft' | 'review' | 'published' | 'archived';
+  access_tier: string;
+  file_path?: string;
+  created_by: string;
+  submitted_at: string;
+  approved_by?: string;
+  approved_at?: string;
+}
+
+// AI Chat types
+export interface ChatResponse {
+  response: string;
+  sources: Array<{
+    item_id: string;
+    title: string;
+    chunk_text?: string;
+  }>;
+  model_used: string;
+  response_time: string;
+  session_id: string;
+  detected_language?: string;
+  query_rewritten?: boolean;
+}
+
+export interface ChatHistoryResponse {
+  session_id: string;
+  messages: Array<{
+    query: string;
+    response: string;
+    source_ids: string[];
+    model_used: string;
+    timestamp: string;
+  }>;
 }
 
 export interface PaginatedResponse<T> {
@@ -75,6 +188,7 @@ export interface SearchParams {
   format?: string;
   status?: string;
   access_tier?: string;
+  item_type?: string;
 }
 
 class APIClient {
@@ -157,6 +271,14 @@ class APIClient {
     return this.request<LibraryCatalogItem>(`/library/catalog/${itemId}`);
   }
 
+  // Borrow a book
+  async borrowBook(catalogId: string): Promise<{ message: string; loan_id: string; due_date: string }> {
+    return this.request(`/library/loans`, {
+      method: 'POST',
+      body: JSON.stringify({ catalog_id: catalogId }),
+    });
+  }
+
   // Media endpoints
   async getMediaItems(params: SearchParams = {}): Promise<PaginatedResponse<MediaItem>> {
     const searchParams = new URLSearchParams();
@@ -196,6 +318,235 @@ class APIClient {
     return this.request<MediaMetadata>(`/media/${itemId}/metadata`, {
       method: 'PATCH',
       body: JSON.stringify(metadata),
+    });
+  }
+
+  // Dashboard — user's loans
+  async getMyLoans(): Promise<{ data: LoanItem[]; total: number }> {
+    return this.request<{ data: LoanItem[]; total: number }>('/library/loans');
+  }
+
+  // Dashboard — user's uploaded media
+  async getMyUploads(params: SearchParams = {}): Promise<PaginatedResponse<MediaItem>> {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) searchParams.append(key, String(value));
+    });
+    return this.request<PaginatedResponse<MediaItem>>(`/media/my-uploads?${searchParams.toString()}`);
+  }
+
+  // Return a borrowed book
+  async returnBook(loanId: string): Promise<{ message: string }> {
+    return this.request(`/library/loans/${loanId}/return`, { method: 'POST' });
+  }
+
+  // Download presigned URL
+  async getDownloadUrl(itemId: string): Promise<{ url: string; expires_at: string }> {
+    return this.request(`/media/${itemId}/download`);
+  }
+
+  // Admin: list users
+  async adminListUsers(params: { page?: number; per_page?: number } = {}): Promise<{ data: User[]; total: number; page: number; per_page: number }> {
+    const sp = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v !== undefined) sp.append(k, String(v)); });
+    return this.request(`/admin/users?${sp.toString()}`);
+  }
+
+  // Admin: change user role
+  async adminUpdateRole(userId: string, roleTier: string): Promise<{ message: string }> {
+    return this.request(`/admin/users/${userId}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role_tier: roleTier }),
+    });
+  }
+
+  // Admin: update media status
+  async adminUpdateMediaStatus(itemId: string, status: string): Promise<{ message: string }> {
+    return this.request(`/admin/media/${itemId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  // Admin: export catalog CSV — returns blob URL
+  getCatalogExportUrl(): string {
+    return `${API_BASE_URL}/admin/catalog/export`;
+  }
+
+  // Admin: import catalog CSV
+  async importCatalogCSV(file: File): Promise<{ inserted: number; updated: number; skipped: number; total: number }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const headers: HeadersInit = {};
+    if (this.accessToken) {
+      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/admin/catalog/import`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Import failed' }));
+      throw new Error(error.message || 'Import failed');
+    }
+
+    return response.json();
+  }
+
+  // Librarian: add a single book
+  async addBook(data: {
+    title: string;
+    author: string;
+    isbn?: string;
+    format?: string;
+    location?: string;
+    year?: number;
+    total_copies?: number;
+  }): Promise<{ catalog_id: string; message: string }> {
+    return this.request('/library/catalog', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Admin: all loans
+  async adminListLoans(params: { status?: string; page?: number; per_page?: number } = {}): Promise<{ data: AdminLoanItem[]; total: number }> {
+    const sp = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v !== undefined) sp.append(k, String(v)); });
+    return this.request(`/library/loans/all?${sp.toString()}`);
+  }
+
+  // Fines
+  async getMyFines(): Promise<{ data: Fine[]; total: number; total_unpaid_bdt: number }> {
+    return this.request('/library/fines');
+  }
+
+  async payFine(fineId: string, paymentMethod: string = 'cash'): Promise<{ message: string; payment: Payment }> {
+    return this.request(`/library/fines/${fineId}/pay`, {
+      method: 'POST',
+      body: JSON.stringify({ payment_method: paymentMethod }),
+    });
+  }
+
+  async waiveFine(fineId: string, reason?: string): Promise<{ message: string }> {
+    return this.request(`/library/fines/${fineId}/waive`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || 'Waived by staff' }),
+    });
+  }
+
+  // AI Chat
+  async sendChatMessage(
+    query: string, 
+    sessionId?: string, 
+    language?: string, 
+    rewriteQuery?: boolean
+  ): Promise<ChatResponse> {
+    return this.request<ChatResponse>('/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        query, 
+        session_id: sessionId,
+        language: language || 'auto',
+        rewrite_query: rewriteQuery || false
+      }),
+    });
+  }
+
+  async getChatHistory(sessionId: string): Promise<ChatHistoryResponse> {
+    return this.request<ChatHistoryResponse>(`/ai/chat/history/${sessionId}`);
+  }
+
+  async summarizeDocument(itemId: string, language?: string): Promise<{ 
+    item_id: string; 
+    summary: string;
+    model_used: string;
+    detected_language?: string;
+  }> {
+    return this.request('/ai/summarize', {
+      method: 'POST',
+      body: JSON.stringify({ item_id: itemId, language: language || 'auto' }),
+    });
+  }
+
+  // Research Papers
+  async submitResearch(data: {
+    title: string;
+    authors: string[];
+    co_authors: string[];
+    abstract: string;
+    keywords: string[];
+    publication_date?: string;
+    doi?: string;
+    journal?: string;
+    conference?: string;
+    file_path: string;
+  }): Promise<{ message: string; paper_id: string; item_id: string }> {
+    return this.request('/research', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listResearch(status?: string): Promise<{ data: ResearchPaper[]; total: number }> {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    return this.request(`/research?${params.toString()}`);
+  }
+
+  async getResearch(paperId: string): Promise<ResearchPaper> {
+    return this.request(`/research/${paperId}`);
+  }
+
+  async submitResearchForReview(paperId: string): Promise<{ message: string }> {
+    return this.request(`/research/${paperId}/submit-for-review`, {
+      method: 'POST',
+    });
+  }
+
+  async reviewResearch(paperId: string, approved: boolean, notes: string): Promise<{ message: string; status: string }> {
+    return this.request(`/research/${paperId}/review`, {
+      method: 'POST',
+      body: JSON.stringify({ approved, notes }),
+    });
+  }
+
+  // Student Projects
+  async submitProject(data: {
+    title: string;
+    team_members: string[];
+    supervisor_id?: string;
+    academic_year: number;
+    course_code?: string;
+    abstract: string;
+    keywords: string[];
+    file_path: string;
+  }): Promise<{ message: string; project_id: string; item_id: string }> {
+    return this.request('/projects', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listProjects(params?: { status?: string; year?: string }): Promise<{ data: StudentProject[]; total: number }> {
+    const sp = new URLSearchParams();
+    if (params?.status) sp.append('status', params.status);
+    if (params?.year) sp.append('year', params.year);
+    return this.request(`/projects?${sp.toString()}`);
+  }
+
+  async getProject(projectId: string): Promise<StudentProject> {
+    return this.request(`/projects/${projectId}`);
+  }
+
+  async approveProject(projectId: string, approved: boolean, notes?: string): Promise<{ message: string; status: string }> {
+    return this.request(`/projects/${projectId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ approved, notes }),
     });
   }
 }

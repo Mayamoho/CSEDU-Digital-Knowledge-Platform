@@ -42,10 +42,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userData = await apiClient.getCurrentUser();
       setUser(userData);
     } catch {
-      clearTokens();
-      setUser(null);
+      // For development: Create mock user if API fails and mock mode is enabled
+      const useMockMode = localStorage.getItem('use_mock_mode') === 'true';
+      if (process.env.NODE_ENV === 'development' && useMockMode) {
+        // Get selected role from localStorage or default to student
+        const selectedRole = localStorage.getItem('mock_role') || 'student';
+
+        const mockUsers: Record<string, any> = {
+          public: {
+            user_id: "mock-public-123",
+            email: "public@gmail.com",
+            name: "Public User",
+            role_tier: "public" as const,
+            created_at: new Date().toISOString(),
+            last_login: null
+          },
+          student: {
+            user_id: "mock-student-123",
+            email: "student@cs.du.ac.bd",
+            name: "Student User",
+            role_tier: "student" as const,
+            created_at: new Date().toISOString(),
+            last_login: null
+          },
+          researcher: {
+            user_id: "mock-researcher-123",
+            email: "researcher@cs.du.ac.bd",
+            name: "Faculty Researcher",
+            role_tier: "researcher" as const,
+            created_at: new Date().toISOString(),
+            last_login: null
+          },
+          librarian: {
+            user_id: "mock-librarian-123",
+            email: "librarian@cs.du.ac.bd",
+            name: "Head Librarian",
+            role_tier: "librarian" as const,
+            created_at: new Date().toISOString(),
+            last_login: null
+          },
+          administrator: {
+            user_id: "mock-admin-123",
+            email: "admin@cs.du.ac.bd",
+            name: "Platform Admin",
+            role_tier: "administrator" as const,
+            created_at: new Date().toISOString(),
+            last_login: null
+          }
+        };
+
+        const mockUser = mockUsers[selectedRole] || mockUsers.student;
+        setUser(mockUser);
+      } else {
+        setUser(null);
+      }
     }
-  }, [clearTokens]);
+  }, []);
 
   const refreshAuth = useCallback(async () => {
     const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
@@ -67,28 +119,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const initAuth = async () => {
+      // Check for existing tokens and load user (works for both dev and production)
       const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
-      const tokenExpiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
-
-      if (!accessToken) {
-        setIsLoading(false);
-        return;
-      }
-
-      apiClient.setAccessToken(accessToken);
-
-      // Check if token is expired
-      if (tokenExpiry && Date.now() > parseInt(tokenExpiry)) {
-        await refreshAuth();
+      if (accessToken) {
+        apiClient.setAccessToken(accessToken);
+        await loadUser();
       } else {
+        // No tokens, try to load user (will use mock mode if enabled)
         await loadUser();
       }
-
       setIsLoading(false);
     };
 
     initAuth();
-  }, [loadUser, refreshAuth]);
+  }, [loadUser]);
 
   // Set up token refresh interval
   useEffect(() => {
