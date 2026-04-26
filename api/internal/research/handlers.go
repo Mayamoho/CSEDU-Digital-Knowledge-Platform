@@ -293,11 +293,8 @@ func (h *Handler) ListResearch(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/research/{paperId}
 func (h *Handler) GetResearch(w http.ResponseWriter, r *http.Request) {
-	_, ok := authpkg.GetUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
+	userID, _ := authpkg.GetUserID(r) // optional auth
+	roleTier, _ := authpkg.GetRoleTier(r)
 
 	paperID := chi.URLParam(r, "paperId")
 	if paperID == "" {
@@ -325,6 +322,18 @@ func (h *Handler) GetResearch(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusNotFound, "research paper not found")
 		return
+	}
+
+	// Allow access if: published, or the requester is the author, or admin/librarian/researcher
+	if p.Status != "published" {
+		if userID == "" {
+			writeError(w, http.StatusNotFound, "research paper not found")
+			return
+		}
+		if userID != p.CreatedBy && roleTier != "administrator" && roleTier != "librarian" && roleTier != "researcher" {
+			writeError(w, http.StatusNotFound, "research paper not found")
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, p)

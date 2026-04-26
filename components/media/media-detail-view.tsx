@@ -62,12 +62,7 @@ export function MediaDetailView({ itemId, itemType }: MediaDetailViewProps) {
   useEffect(() => { loadItem(); }, [itemId]);
 
   const handleDownload = async () => {
-    try {
-      const { url } = await apiClient.getDownloadUrl(itemId);
-      window.open(url, '_blank');
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Download failed");
-    }
+    window.location.href = `/api/v1/media/${itemId}/download`;
   };
 
   const handleSaveEdit = async () => {

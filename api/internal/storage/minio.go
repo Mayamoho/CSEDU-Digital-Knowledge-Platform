@@ -58,6 +58,15 @@ func (m *MinioClient) Upload(ctx context.Context, objectKey, contentType string,
 	return objectKey, nil
 }
 
+// GetObject retrieves an object from MinIO for streaming.
+func (m *MinioClient) GetObject(ctx context.Context, objectKey string) (*minio.Object, error) {
+	obj, err := m.client.GetObject(ctx, m.bucket, objectKey, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("GetObject: %w", err)
+	}
+	return obj, nil
+}
+
 // PresignedURL returns a temporary download URL (15 minutes).
 func (m *MinioClient) PresignedURL(ctx context.Context, objectKey string) (string, error) {
 	u, err := m.client.PresignedGetObject(ctx, m.bucket, objectKey, 15*60*1000000000, nil)

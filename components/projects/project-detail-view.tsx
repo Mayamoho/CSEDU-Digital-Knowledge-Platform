@@ -187,7 +187,7 @@ export function ProjectDetailView({ projectId }: { projectId: string }) {
               )}
               {project.file_path && (
                 <Button variant="outline" asChild>
-                  <a href={`/api/v1/media/${project.item_id}/download`} target="_blank">
+                  <a href={`/api/v1/media/${project.item_id}/download`} download>
                     <Download className="h-4 w-4 mr-2" /> Download File
                   </a>
                 </Button>

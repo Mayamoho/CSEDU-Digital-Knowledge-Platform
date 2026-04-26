@@ -175,12 +175,12 @@ func main() {
 			r.Use(middleware.OptionalAuth)
 			r.Get("/", mediaHandler.ListMedia)
 			r.Get("/{itemId}", mediaHandler.GetMedia)
+			r.Get("/{itemId}/download", mediaHandler.Download)
 
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.Authenticate)
 				r.Post("/upload", mediaHandler.Upload)
 				r.Get("/my-uploads", mediaHandler.MyUploads)
-				r.Get("/{itemId}/download", mediaHandler.Download)
 				r.Patch("/{itemId}/metadata", mediaHandler.UpdateMetadata)
 			})
 		})

@@ -3,6 +3,7 @@ package media
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"path/filepath"
@@ -377,28 +378,56 @@ func (h *Handler) GetMedia(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GET /api/v1/media/{itemId}/download — returns a presigned MinIO URL
+// GET /api/v1/media/{itemId}/download — streams the file directly to the client
 func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "itemId")
 
-	var filePath string
+	var filePath, title, format string
 	if err := h.db.QueryRow(r.Context(),
-		`SELECT file_path FROM media_items WHERE item_id = $1`, id,
-	).Scan(&filePath); err != nil || filePath == "" {
+		`SELECT file_path, title, format FROM media_items WHERE item_id = $1`, id,
+	).Scan(&filePath, &title, &format); err != nil || filePath == "" {
 		writeError(w, http.StatusNotFound, "file not found")
 		return
 	}
 
-	url, err := h.minio.PresignedURL(r.Context(), filePath)
+	// Stream the object directly from MinIO to the client
+	obj, err := h.minio.GetObject(r.Context(), filePath)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not generate download link")
+		writeError(w, http.StatusInternalServerError, "could not retrieve file")
 		return
 	}
+	defer obj.Close()
 
-	writeJSON(w, http.StatusOK, map[string]string{
-		"url":        url,
-		"expires_at": time.Now().Add(15 * time.Minute).Format(time.RFC3339),
-	})
+	// Set appropriate headers for download
+	contentType := "application/octet-stream"
+	switch format {
+	case "pdf":
+		contentType = "application/pdf"
+	case "docx":
+		contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case "doc":
+		contentType = "application/msword"
+	case "pptx":
+		contentType = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case "zip":
+		contentType = "application/zip"
+	case "mp4":
+		contentType = "video/mp4"
+	case "jpg", "jpeg":
+		contentType = "image/jpeg"
+	case "png":
+		contentType = "image/png"
+	}
+
+	filename := title + "." + format
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+
+	if _, err := io.Copy(w, obj); err != nil {
+		// Client likely disconnected; log but don't write error (headers already sent)
+		fmt.Printf("Download stream error for %s: %v\n", id, err)
+	}
 }
 
 // PATCH /api/v1/media/{itemId}/metadata

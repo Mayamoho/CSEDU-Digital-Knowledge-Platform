@@ -275,7 +275,7 @@ export function ResearchDetailView({ paperId }: { paperId: string }) {
 
           {paper.file_path && (
             <Button variant="outline" asChild>
-              <a href={`/api/v1/media/${paper.item_id}/download`} target="_blank">
+              <a href={`/api/v1/media/${paper.item_id}/download`} download>
                 <Download className="h-4 w-4 mr-2" /> Download Paper
               </a>
             </Button>
