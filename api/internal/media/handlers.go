@@ -419,6 +419,7 @@ func (h *Handler) UpdateMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
+		Title    *string  `json:"title"`
 		Abstract *string  `json:"abstract"`
 		Keywords []string `json:"keywords"`
 		Tags     []string `json:"tags"`
@@ -427,6 +428,18 @@ func (h *Handler) UpdateMetadata(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
+	}
+
+	// Update title if provided
+	if req.Title != nil && *req.Title != "" {
+		_, err := h.db.Exec(r.Context(),
+			`UPDATE media_items SET title = $1 WHERE item_id = $2`,
+			*req.Title, id,
+		)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not update title")
+			return
+		}
 	}
 
 	_, err := h.db.Exec(r.Context(),

@@ -215,11 +215,9 @@ func main() {
 
 		// Research Papers (researchers can submit, staff can review)
 		r.Route("/research", func(r chi.Router) {
-			r.Group(func(r chi.Router) {
-				r.Use(middleware.Authenticate)
-				r.Get("/", researchHandler.ListResearch)
-				r.Get("/{paperId}", researchHandler.GetResearch)
-			})
+			// Public/optional auth for listing and viewing
+			r.With(middleware.OptionalAuth).Get("/", researchHandler.ListResearch)
+			r.With(middleware.OptionalAuth).Get("/{paperId}", researchHandler.GetResearch)
 
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.Authenticate)

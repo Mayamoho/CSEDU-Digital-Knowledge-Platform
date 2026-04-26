@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { ROLE_DISPLAY_NAMES, type RoleTier } from "@/lib/types";
 import { RoleGate } from "@/components/auth/role-gate";
+import { ReviewNotifications } from "@/components/research/review-notifications";
 
 interface DashboardStats {
   activeLoans: number;
@@ -103,6 +104,13 @@ export function DashboardContent() {
         </RoleGate>
         <StatsCard title="Outstanding Fines" value={isLoading ? null : `${stats?.totalFines ?? 0} BDT`}       icon={Clock}         href="/fines" variant={stats?.totalFines ? "warning" : "default"} />
       </div>
+
+      {/* Review Notifications for Researchers */}
+      {(user.role_tier === 'researcher' || user.role_tier === 'administrator') && (
+        <div className="mb-8">
+          <ReviewNotifications />
+        </div>
+      )}
 
       {/* Quick Actions + Profile */}
       <div className="grid gap-6 lg:grid-cols-3 mb-8">

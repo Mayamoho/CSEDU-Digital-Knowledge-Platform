@@ -2,12 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import { apiClient } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { 
   FileText, 
   Download, 
@@ -15,8 +20,10 @@ import {
   User, 
   Tag, 
   AlertCircle,
-  ArrowLeft 
+  ArrowLeft,
+  Edit
 } from "lucide-react";
+import { toast } from "sonner";
 
 interface MediaDetailViewProps {
   itemId: string;
@@ -25,13 +32,13 @@ interface MediaDetailViewProps {
 
 export function MediaDetailView({ itemId, itemType }: MediaDetailViewProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const [item, setItem] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    loadItem();
-  }, [itemId]);
+  const [editOpen, setEditOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editForm, setEditForm] = useState({ title: "", abstract: "", keywords: "" });
 
   const loadItem = async () => {
     try {
@@ -39,6 +46,11 @@ export function MediaDetailView({ itemId, itemType }: MediaDetailViewProps) {
       setError(null);
       const data = await apiClient.getMediaItem(itemId);
       setItem(data);
+      setEditForm({
+        title: data.title || "",
+        abstract: data.metadata?.abstract || "",
+        keywords: data.metadata?.keywords?.join(", ") || "",
+      });
     } catch (err) {
       console.error("Failed to load item:", err);
       setError(err instanceof Error ? err.message : "Failed to load item");
@@ -46,6 +58,8 @@ export function MediaDetailView({ itemId, itemType }: MediaDetailViewProps) {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => { loadItem(); }, [itemId]);
 
   const handleDownload = async () => {
     try {
@@ -56,14 +70,30 @@ export function MediaDetailView({ itemId, itemType }: MediaDetailViewProps) {
     }
   };
 
+  const handleSaveEdit = async () => {
+    setIsSaving(true);
+    try {
+      await apiClient.updateMediaMetadata(itemId, {
+        title: editForm.title,
+        abstract: editForm.abstract,
+        keywords: editForm.keywords.split(",").map(k => k.trim()).filter(Boolean),
+      });
+      toast.success("Updated successfully");
+      setEditOpen(false);
+      await loadItem();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="container max-w-4xl px-4 py-8">
         <Skeleton className="h-8 w-32 mb-6" />
         <Card>
-          <CardHeader>
-            <Skeleton className="h-8 w-3/4" />
-          </CardHeader>
+          <CardHeader><Skeleton className="h-8 w-3/4" /></CardHeader>
           <CardContent className="space-y-4">
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-full" />
@@ -78,8 +108,7 @@ export function MediaDetailView({ itemId, itemType }: MediaDetailViewProps) {
     return (
       <div className="container max-w-4xl px-4 py-8">
         <Button variant="ghost" onClick={() => router.back()} className="mb-6">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back
         </Button>
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -89,12 +118,20 @@ export function MediaDetailView({ itemId, itemType }: MediaDetailViewProps) {
     );
   }
 
+  const canEdit = user && (user.user_id === item.created_by || user.role_tier === "administrator" || user.role_tier === "librarian");
+
   return (
     <div className="container max-w-4xl px-4 py-8">
-      <Button variant="ghost" onClick={() => router.back()} className="mb-6">
-        <ArrowLeft className="h-4 w-4 mr-2" />
-        Back
-      </Button>
+      <div className="flex items-center justify-between mb-6">
+        <Button variant="ghost" onClick={() => router.back()}>
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back
+        </Button>
+        {canEdit && (
+          <Button variant="outline" onClick={() => setEditOpen(true)}>
+            <Edit className="h-4 w-4 mr-2" /> Edit
+          </Button>
+        )}
+      </div>
 
       <Card>
         <CardHeader>
@@ -102,29 +139,23 @@ export function MediaDetailView({ itemId, itemType }: MediaDetailViewProps) {
             <div className="flex-1">
               <CardTitle className="text-2xl mb-2">{item.title}</CardTitle>
               <div className="flex flex-wrap gap-2">
-                <Badge variant={
-                  item.status === 'published' ? 'default' :
-                  item.status === 'review' ? 'secondary' :
-                  'outline'
-                }>
+                <Badge variant={item.status === 'published' ? 'default' : item.status === 'review' ? 'secondary' : 'outline'}>
                   {item.status}
                 </Badge>
                 <Badge variant="outline">{item.item_type}</Badge>
-                <Badge variant="outline">{item.format.toUpperCase()}</Badge>
+                <Badge variant="outline">{item.format?.toUpperCase()}</Badge>
                 <Badge variant="outline">{item.access_tier}</Badge>
               </div>
             </div>
             {item.file_path && (
               <Button onClick={handleDownload}>
-                <Download className="h-4 w-4 mr-2" />
-                Download
+                <Download className="h-4 w-4 mr-2" /> Download
               </Button>
             )}
           </div>
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* Metadata */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Calendar className="h-4 w-4" />
@@ -138,48 +169,26 @@ export function MediaDetailView({ itemId, itemType }: MediaDetailViewProps) {
             )}
           </div>
 
-          {/* Abstract */}
           {item.metadata?.abstract && (
             <div>
               <h3 className="font-semibold mb-2">Abstract</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {item.metadata.abstract}
-              </p>
+              <p className="text-sm text-muted-foreground leading-relaxed">{item.metadata.abstract}</p>
             </div>
           )}
 
-          {/* Keywords */}
-          {item.metadata?.keywords && item.metadata.keywords.length > 0 && (
+          {item.metadata?.keywords?.length > 0 && (
             <div>
               <h3 className="font-semibold mb-2 flex items-center gap-2">
-                <Tag className="h-4 w-4" />
-                Keywords
+                <Tag className="h-4 w-4" /> Keywords
               </h3>
               <div className="flex flex-wrap gap-2">
                 {item.metadata.keywords.map((keyword: string, index: number) => (
-                  <Badge key={index} variant="secondary">
-                    {keyword}
-                  </Badge>
+                  <Badge key={index} variant="secondary">{keyword}</Badge>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Tags */}
-          {item.metadata?.tags && item.metadata.tags.length > 0 && (
-            <div>
-              <h3 className="font-semibold mb-2">Tags</h3>
-              <div className="flex flex-wrap gap-2">
-                {item.metadata.tags.map((tag: string, index: number) => (
-                  <Badge key={index} variant="outline">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Language */}
           {item.metadata?.language && (
             <div className="text-sm text-muted-foreground">
               Language: {item.metadata.language === 'en' ? 'English' : item.metadata.language === 'bn' ? 'বাংলা' : item.metadata.language}
@@ -187,6 +196,31 @@ export function MediaDetailView({ itemId, itemType }: MediaDetailViewProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Edit Item</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <Label>Title</Label>
+              <Input value={editForm.title} onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Abstract / Description</Label>
+              <Textarea rows={4} value={editForm.abstract} onChange={e => setEditForm(f => ({ ...f, abstract: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Keywords (comma-separated)</Label>
+              <Input value={editForm.keywords} onChange={e => setEditForm(f => ({ ...f, keywords: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveEdit} disabled={isSaving}>{isSaving ? "Saving..." : "Save Changes"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

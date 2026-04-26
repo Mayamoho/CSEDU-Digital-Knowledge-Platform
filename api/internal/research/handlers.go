@@ -180,12 +180,7 @@ func (h *Handler) SubmitResearch(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/research
 func (h *Handler) ListResearch(w http.ResponseWriter, r *http.Request) {
-	userID, ok := authpkg.GetUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-
+	userID, _ := authpkg.GetUserID(r) // optional auth
 	roleTier, _ := authpkg.GetRoleTier(r)
 	status := r.URL.Query().Get("status")
 	forReview := r.URL.Query().Get("for_review") == "true"
@@ -228,8 +223,8 @@ func (h *Handler) ListResearch(w http.ResponseWriter, r *http.Request) {
 			         JOIN media_metadata mm ON m.item_id = mm.item_id
 			         ORDER BY rp.submitted_at DESC`
 		}
-	} else {
-		// Regular users see published papers + their own papers
+	} else if userID != "" {
+		// Authenticated non-researcher: see published + own papers
 		if status != "" {
 			query = `SELECT rp.paper_id, rp.item_id, m.title, rp.authors, rp.co_authors, 
 			                mm.abstract, mm.keywords, rp.publication_date, rp.doi, rp.journal, 
@@ -253,6 +248,17 @@ func (h *Handler) ListResearch(w http.ResponseWriter, r *http.Request) {
 			         ORDER BY rp.submitted_at DESC`
 			args = append(args, userID)
 		}
+	} else {
+		// Unauthenticated: only published papers
+		query = `SELECT rp.paper_id, rp.item_id, m.title, rp.authors, rp.co_authors, 
+		                mm.abstract, mm.keywords, rp.publication_date, rp.doi, rp.journal, 
+		                rp.conference, m.status, m.access_tier, m.file_path, m.created_by, 
+		                rp.submitted_at, rp.reviewer_id, rp.review_notes, rp.reviewed_at
+		         FROM research_papers rp
+		         JOIN media_items m ON rp.item_id = m.item_id
+		         JOIN media_metadata mm ON m.item_id = mm.item_id
+		         WHERE m.status = 'published'
+		         ORDER BY rp.submitted_at DESC`
 	}
 
 	rows, err := h.db.Query(r.Context(), query, args...)
@@ -263,7 +269,7 @@ func (h *Handler) ListResearch(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var papers []ResearchPaper
+	var papers []ResearchPaper = make([]ResearchPaper, 0)
 	for rows.Next() {
 		var p ResearchPaper
 		err := rows.Scan(

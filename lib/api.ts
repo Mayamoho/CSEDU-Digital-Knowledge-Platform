@@ -327,7 +327,7 @@ class APIClient {
     return response.json();
   }
 
-  async updateMediaMetadata(itemId: string, metadata: Partial<MediaMetadata>): Promise<MediaMetadata> {
+  async updateMediaMetadata(itemId: string, metadata: Partial<MediaMetadata> & { title?: string }): Promise<MediaMetadata> {
     return this.request<MediaMetadata>(`/media/${itemId}/metadata`, {
       method: 'PATCH',
       body: JSON.stringify(metadata),

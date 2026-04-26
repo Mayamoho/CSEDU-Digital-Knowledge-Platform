@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { AuthGuard } from "@/components/auth/auth-guard";
-import { MediaDetailView } from "@/components/media/media-detail-view";
+import { ProjectDetailView } from "@/components/projects/project-detail-view";
 
 export const metadata: Metadata = {
   title: "Student Project",
@@ -9,10 +8,5 @@ export const metadata: Metadata = {
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ itemId: string }> }) {
   const { itemId } = await params;
-  
-  return (
-    <AuthGuard requireAuth>
-      <MediaDetailView itemId={itemId} itemType="project" />
-    </AuthGuard>
-  );
+  return <ProjectDetailView projectId={itemId} />;
 }

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { AuthGuard } from "@/components/auth/auth-guard";
-import { MediaDetailView } from "@/components/media/media-detail-view";
+import { ResearchDetailView } from "@/components/research/research-detail-view";
 
 export const metadata: Metadata = {
   title: "Research Paper",
@@ -9,10 +8,5 @@ export const metadata: Metadata = {
 
 export default async function ResearchDetailPage({ params }: { params: Promise<{ itemId: string }> }) {
   const { itemId } = await params;
-  
-  return (
-    <AuthGuard requireAuth>
-      <MediaDetailView itemId={itemId} itemType="research" />
-    </AuthGuard>
-  );
+  return <ResearchDetailView paperId={itemId} />;
 }
