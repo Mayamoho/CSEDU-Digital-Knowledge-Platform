@@ -225,7 +225,9 @@ func main() {
 				r.Use(middleware.Authenticate)
 				r.Use(middleware.RequireRole("researcher", "administrator"))
 				r.Post("/", researchHandler.SubmitResearch)
+				r.Put("/{paperId}", researchHandler.UpdateResearch)
 				r.Post("/{paperId}/submit-for-review", researchHandler.SubmitForReview)
+				r.Post("/{paperId}/publish", researchHandler.PublishResearch)
 			})
 
 			r.Group(func(r chi.Router) {
@@ -237,16 +239,15 @@ func main() {
 
 		// Student Projects (students can submit, staff can approve)
 		r.Route("/projects", func(r chi.Router) {
-			r.Group(func(r chi.Router) {
-				r.Use(middleware.Authenticate)
-				r.Get("/", projectsHandler.ListProjects)
-				r.Get("/{projectId}", projectsHandler.GetProject)
-			})
+			// Public access to view published projects
+			r.With(middleware.OptionalAuth).Get("/", projectsHandler.ListProjects)
+			r.With(middleware.OptionalAuth).Get("/{projectId}", projectsHandler.GetProject)
 
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.Authenticate)
-				r.Use(middleware.RequireRole("student", "administrator"))
+				r.Use(middleware.RequireRole("student", "researcher", "administrator"))
 				r.Post("/", projectsHandler.SubmitProject)
+				r.Put("/{projectId}", projectsHandler.UpdateProject)
 			})
 
 			r.Group(func(r chi.Router) {

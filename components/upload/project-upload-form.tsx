@@ -31,6 +31,9 @@ export function ProjectUploadForm() {
   const [courseCode, setCourseCode] = useState("");
   const [abstract, setAbstract] = useState("");
   const [keywords, setKeywords] = useState<string[]>([""]);
+  const [webUrl, setWebUrl] = useState("");
+  const [githubRepo, setGithubRepo] = useState("");
+  const [appDownload, setAppDownload] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState("");
@@ -64,9 +67,12 @@ export function ProjectUploadForm() {
       'application/msword': ['.doc'],
       'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
       'application/vnd.ms-powerpoint': ['.ppt'],
+      'application/zip': ['.zip'],
+      'application/x-zip-compressed': ['.zip'],
       'video/mp4': ['.mp4'],
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/png': ['.png'],
+      'application/vnd.android.package-archive': ['.apk'],
     },
   });
 
@@ -89,11 +95,6 @@ export function ProjectUploadForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!uploadedFile) {
-      setError("Please select a file to upload");
-      return;
-    }
-    
     if (!title.trim()) {
       setError("Please enter a title");
       return;
@@ -115,25 +116,36 @@ export function ProjectUploadForm() {
       setError("Please enter a valid academic year (2000-2100)");
       return;
     }
+
+    // Check if at least one of file, web URL, GitHub repo, or app download is provided
+    if (!uploadedFile && !webUrl.trim() && !githubRepo.trim() && !appDownload.trim()) {
+      setError("Please provide at least one of: file upload, web URL, GitHub repository, or app download link");
+      return;
+    }
     
     setIsUploading(true);
     setUploadProgress(0);
     
     try {
-      // First upload the file to media
-      const formData = new FormData();
-      formData.append('file', uploadedFile);
-      formData.append('title', title);
-      formData.append('description', abstract);
-      formData.append('keywords', keywords.filter(k => k.trim()).join(','));
-      formData.append('access_tier', 'student');
-      formData.append('language', 'en');
-      formData.append('status', 'published');
-      formData.append('item_type', 'project');
-
-      const mediaResult = await apiClient.uploadMedia(formData);
+      let filePath: string | undefined;
       
-      // Then create project entry
+      // Upload file if provided
+      if (uploadedFile) {
+        const formData = new FormData();
+        formData.append('file', uploadedFile);
+        formData.append('title', title);
+        formData.append('description', abstract);
+        formData.append('keywords', keywords.filter(k => k.trim()).join(','));
+        formData.append('access_tier', 'student');
+        formData.append('language', 'en');
+        formData.append('status', 'published');
+        formData.append('item_type', 'project');
+
+        const mediaResult = await apiClient.uploadMedia(formData);
+        filePath = mediaResult.file_path || undefined;
+      }
+      
+      // Create project entry
       await apiClient.submitProject({
         title,
         team_members: validMembers,
@@ -142,7 +154,10 @@ export function ProjectUploadForm() {
         course_code: courseCode || undefined,
         abstract,
         keywords: keywords.filter(k => k.trim()),
-        file_path: mediaResult.file_path || '',
+        file_path: filePath,
+        web_url: webUrl || undefined,
+        github_repo: githubRepo || undefined,
+        app_download: appDownload || undefined,
       });
 
       toast.success("Project published successfully! It's now visible in the projects showcase.");
@@ -162,7 +177,7 @@ export function ProjectUploadForm() {
         <CardHeader>
           <CardTitle>Upload Student Project</CardTitle>
           <CardDescription>
-            Submit your student project, final year work, or creative achievement. Projects will be reviewed by staff before publication.
+            Submit your student project, final year work, or creative achievement. You can upload files, provide web links, or both. Projects will be reviewed by staff before publication.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -175,7 +190,7 @@ export function ProjectUploadForm() {
 
           {/* File Upload */}
           <div className="space-y-2">
-            <Label>Upload Project File *</Label>
+            <Label>Upload Project File (Optional)</Label>
             <div
               {...getRootProps()}
               className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
@@ -213,7 +228,10 @@ export function ProjectUploadForm() {
                     Drag and drop your project file here, or click to select
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    PDF, DOCX, PPTX, MP4, JPG, PNG • Maximum 50MB
+                    PDF, DOCX, PPTX, MP4, JPG, PNG, ZIP, APK • Maximum 50MB
+                  </p>
+                  <p className="text-xs text-muted-foreground font-medium">
+                    File upload is optional - you can also provide web links below
                   </p>
                 </div>
               )}
@@ -362,6 +380,56 @@ export function ProjectUploadForm() {
             </Button>
           </div>
 
+          {/* Project Links */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Project Links (Optional)</h3>
+            
+            <div className="space-y-2">
+              <Label htmlFor="webUrl">Live Demo / Website URL</Label>
+              <Input
+                id="webUrl"
+                type="url"
+                value={webUrl}
+                onChange={(e) => setWebUrl(e.target.value)}
+                placeholder="https://your-project-demo.com"
+                disabled={isUploading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Link to your live project or demo website
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="githubRepo">GitHub Repository</Label>
+              <Input
+                id="githubRepo"
+                type="url"
+                value={githubRepo}
+                onChange={(e) => setGithubRepo(e.target.value)}
+                placeholder="https://github.com/username/project-name"
+                disabled={isUploading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Link to your project's source code repository
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="appDownload">App Download Link</Label>
+              <Input
+                id="appDownload"
+                type="url"
+                value={appDownload}
+                onChange={(e) => setAppDownload(e.target.value)}
+                placeholder="https://play.google.com/store/apps/details?id=..."
+                disabled={isUploading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Link to download your mobile app (Play Store, App Store, or direct APK)
+              </p>
+            </div>
+          </div>
+
           {/* Upload Progress */}
           {isUploading && (
             <div className="space-y-2">
@@ -375,7 +443,7 @@ export function ProjectUploadForm() {
 
           <Button 
             type="submit" 
-            disabled={!uploadedFile || !title.trim() || !abstract.trim() || isUploading}
+            disabled={!title.trim() || !abstract.trim() || isUploading}
             className="w-full"
           >
             {isUploading ? (

@@ -388,7 +388,7 @@ func (h *Handler) ListAllLoans(w http.ResponseWriter, r *http.Request) {
 		 JOIN library_catalog c ON c.catalog_id = l.catalog_id
 		 WHERE `+where+`
 		 ORDER BY l.checkout_date DESC
-		 LIMIT $`+strconv.Itoa(limitIdx+1)+` OFFSET $`+strconv.Itoa(offsetIdx+1),
+		 LIMIT $`+strconv.Itoa(limitIdx)+` OFFSET $`+strconv.Itoa(offsetIdx),
 		args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")

@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { apiClient, MediaItem } from "@/lib/api";
+import { apiClient, StudentProject } from "@/lib/api";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,19 +16,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { BookOpen, Calendar, User, Users, Star, ExternalLink } from "lucide-react";
+import { BookOpen, Calendar, User, Users, Star, ExternalLink, Github, Globe, Smartphone } from "lucide-react";
 
-const accessTierConfig = {
-  public: { label: "Public", variant: "default" as const },
-  student: { label: "Students", variant: "secondary" as const },
-  researcher: { label: "Researchers", variant: "outline" as const },
-  librarian: { label: "Staff Only", variant: "outline" as const },
-  restricted: { label: "Restricted", variant: "destructive" as const },
+const statusConfig = {
+  draft: { label: "Draft", variant: "secondary" as const },
+  review: { label: "Under Review", variant: "outline" as const },
+  published: { label: "Published", variant: "default" as const },
+  archived: { label: "Archived", variant: "destructive" as const },
 };
 
 function ProjectsGridInner() {
   const searchParams = useSearchParams();
-  const [items, setItems] = useState<MediaItem[]>([]);
+  const [projects, setProjects] = useState<StudentProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [total, setTotal] = useState(0);
 
@@ -37,31 +36,25 @@ function ProjectsGridInner() {
   const perPage = 12;
 
   useEffect(() => {
-    const fetchItems = async () => {
+    const fetchProjects = async () => {
       setIsLoading(true);
       try {
-        const response = await apiClient.getMediaItems({
-          q: query || undefined,
-          page,
-          per_page: perPage,
-          item_type: 'project',
-        });
-        
-        setItems(response.data);
-        setTotal(response.total);
+        const response = await apiClient.listProjects();
+        // Ensure we always have an array, even if response is malformed
+        const projectsData = response?.data || [];
+        setProjects(Array.isArray(projectsData) ? projectsData : []);
+        setTotal(response?.total || 0);
       } catch (error) {
-        console.error('Failed to fetch project items:', error);
-        setItems([]);
+        console.error('Failed to fetch projects:', error);
+        setProjects([]);
         setTotal(0);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchItems();
+    fetchProjects();
   }, [query, page]);
-
-  const totalPages = Math.ceil(total / perPage);
 
   if (isLoading) {
     return (
@@ -91,7 +84,7 @@ function ProjectsGridInner() {
     );
   }
 
-  if (items.length === 0) {
+  if (!projects || !Array.isArray(projects) || projects.length === 0) {
     return (
       <Empty>
         <EmptyMedia variant="icon">
@@ -101,7 +94,7 @@ function ProjectsGridInner() {
         <EmptyDescription>
           {query
             ? `No projects match "${query}". Try adjusting your search or filters.`
-            : "No projects match your current filters."}
+            : "No projects have been published yet."}
         </EmptyDescription>
       </Empty>
     );
@@ -111,70 +104,106 @@ function ProjectsGridInner() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Showing {items.length} of {total} projects
+          Showing {projects.length} of {total} projects
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((item) => (
-          <Card key={item.item_id} className="flex flex-col">
+        {projects.map((project) => (
+          <Card key={project.project_id} className="flex flex-col">
             <CardHeader className="flex-1">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                   <BookOpen className="h-5 w-5 text-primary" />
                 </div>
-                <Badge variant={accessTierConfig[item.access_tier].variant}>
-                  {accessTierConfig[item.access_tier].label}
+                <Badge variant={statusConfig[project.status].variant}>
+                  {statusConfig[project.status].label}
                 </Badge>
               </div>
               <h3 className="mt-3 font-semibold leading-tight line-clamp-2">
-                {item.title}
+                {project.title}
               </h3>
-              {item.metadata?.abstract && (
+              {project.abstract && (
                 <p className="mt-2 text-sm text-muted-foreground line-clamp-3">
-                  {item.metadata.abstract}
+                  {project.abstract}
                 </p>
               )}
               <div className="mt-3 space-y-1 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1.5">
                   <Calendar className="h-3.5 w-3.5" />
-                  <span>{new Date(item.upload_date).toLocaleDateString()}</span>
+                  <span>{project.academic_year}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <User className="h-3.5 w-3.5" />
-                  <span className="line-clamp-1">{item.created_by}</span>
+                  <Users className="h-3.5 w-3.5" />
+                  <span className="line-clamp-1">
+                    {project.team_members.length} member{project.team_members.length !== 1 ? 's' : ''}
+                  </span>
                 </div>
+                {project.course_code && (
+                  <div className="flex items-center gap-1.5">
+                    <BookOpen className="h-3.5 w-3.5" />
+                    <span>{project.course_code}</span>
+                  </div>
+                )}
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-              {item.metadata?.keywords && item.metadata.keywords.length > 0 && (
+              {project.keywords && project.keywords.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-3">
-                  {item.metadata.keywords.slice(0, 3).map((keyword, index) => (
+                  {project.keywords.slice(0, 3).map((keyword, index) => (
                     <Badge key={index} variant="secondary" className="text-xs">
                       {keyword}
                     </Badge>
                   ))}
-                  {item.metadata.keywords.length > 3 && (
+                  {project.keywords.length > 3 && (
                     <Badge variant="secondary" className="text-xs">
-                      +{item.metadata.keywords.length - 3}
+                      +{project.keywords.length - 3}
                     </Badge>
                   )}
                 </div>
               )}
+              
+              {/* Project Links */}
+              <div className="flex flex-wrap gap-2 mb-3">
+                {project.web_url && (
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={project.web_url} target="_blank" rel="noopener noreferrer">
+                      <Globe className="h-3 w-3 mr-1" />
+                      Demo
+                    </a>
+                  </Button>
+                )}
+                {project.github_repo && (
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={project.github_repo} target="_blank" rel="noopener noreferrer">
+                      <Github className="h-3 w-3 mr-1" />
+                      Code
+                    </a>
+                  </Button>
+                )}
+                {project.app_download && (
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={project.app_download} target="_blank" rel="noopener noreferrer">
+                      <Smartphone className="h-3 w-3 mr-1" />
+                      App
+                    </a>
+                  </Button>
+                )}
+              </div>
             </CardContent>
             <CardFooter className="pt-0">
               <Button variant="outline" className="w-full" asChild>
-                <Link href={`/projects/${item.item_id}`}>View Details</Link>
+                <Link href={`/projects/${project.project_id}`}>View Details</Link>
               </Button>
             </CardFooter>
           </Card>
         ))}
       </div>
 
-      {totalPages > 1 && (
+      {Math.ceil(total / perPage) > 1 && (
         <div className="flex justify-center mt-6">
           <div className="text-sm text-muted-foreground">
-            Page {page} of {totalPages}
+            Page {page} of {Math.ceil(total / perPage)}
           </div>
         </div>
       )}

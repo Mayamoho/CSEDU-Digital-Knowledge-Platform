@@ -188,12 +188,24 @@ func (h *Handler) ListResearch(w http.ResponseWriter, r *http.Request) {
 
 	roleTier, _ := authpkg.GetRoleTier(r)
 	status := r.URL.Query().Get("status")
+	forReview := r.URL.Query().Get("for_review") == "true"
 
 	var query string
 	var args []interface{}
 
-	// Build query based on role
-	if roleTier == "administrator" || roleTier == "librarian" || roleTier == "researcher" {
+	// Special case: researchers can see papers pending review (excluding their own)
+	if forReview && roleTier == "researcher" {
+		query = `SELECT rp.paper_id, rp.item_id, m.title, rp.authors, rp.co_authors, 
+		                mm.abstract, mm.keywords, rp.publication_date, rp.doi, rp.journal, 
+		                rp.conference, m.status, m.access_tier, m.file_path, m.created_by, 
+		                rp.submitted_at, rp.reviewer_id, rp.review_notes, rp.reviewed_at
+		         FROM research_papers rp
+		         JOIN media_items m ON rp.item_id = m.item_id
+		         JOIN media_metadata mm ON m.item_id = mm.item_id
+		         WHERE m.status = 'review' AND m.created_by != $1
+		         ORDER BY rp.submitted_at ASC`
+		args = append(args, userID)
+	} else if roleTier == "administrator" || roleTier == "librarian" || roleTier == "researcher" {
 		// Can see all papers
 		if status != "" {
 			query = `SELECT rp.paper_id, rp.item_id, m.title, rp.authors, rp.co_authors, 
@@ -453,5 +465,179 @@ func (h *Handler) ReviewPaper(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"message": "review completed successfully",
 		"status":  newStatus,
+	})
+}
+
+// PUT /api/v1/research/{paperId} — update research paper
+func (h *Handler) UpdateResearch(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authpkg.GetUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	paperID := chi.URLParam(r, "paperId")
+	if paperID == "" {
+		writeError(w, http.StatusBadRequest, "paper_id is required")
+		return
+	}
+
+	var req struct {
+		Title           string   `json:"title"`
+		Authors         []string `json:"authors"`
+		CoAuthors       []string `json:"co_authors"`
+		Abstract        string   `json:"abstract"`
+		Keywords        []string `json:"keywords"`
+		PublicationDate *string  `json:"publication_date"`
+		DOI             *string  `json:"doi"`
+		Journal         *string  `json:"journal"`
+		Conference      *string  `json:"conference"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate required fields
+	if req.Title == "" || len(req.Authors) == 0 || req.Abstract == "" {
+		writeError(w, http.StatusBadRequest, "title, authors, and abstract are required")
+		return
+	}
+
+	ctx := r.Context()
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Check ownership and get item_id
+	var itemID, createdBy string
+	err = tx.QueryRow(ctx,
+		`SELECT rp.item_id, m.created_by 
+		 FROM research_papers rp
+		 JOIN media_items m ON m.item_id = rp.item_id
+		 WHERE rp.paper_id = $1`,
+		paperID,
+	).Scan(&itemID, &createdBy)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "research paper not found")
+		return
+	}
+
+	if createdBy != userID {
+		writeError(w, http.StatusForbidden, "you can only update your own research papers")
+		return
+	}
+
+	// Update media_items
+	_, err = tx.Exec(ctx,
+		`UPDATE media_items SET title = $1 WHERE item_id = $2`,
+		req.Title, itemID,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update media item")
+		return
+	}
+
+	// Update media_metadata
+	_, err = tx.Exec(ctx,
+		`UPDATE media_metadata SET abstract = $1, keywords = $2 WHERE item_id = $3`,
+		req.Abstract, req.Keywords, itemID,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update metadata")
+		return
+	}
+
+	// Update research_papers
+	_, err = tx.Exec(ctx,
+		`UPDATE research_papers 
+		 SET authors = $1, co_authors = $2, publication_date = $3, doi = $4, journal = $5, conference = $6
+		 WHERE paper_id = $7`,
+		req.Authors, req.CoAuthors, req.PublicationDate, req.DOI, req.Journal, req.Conference, paperID,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update research paper")
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit transaction")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": "research paper updated successfully",
+	})
+}
+
+// POST /api/v1/research/{paperId}/publish — publish approved research paper
+func (h *Handler) PublishResearch(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authpkg.GetUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	paperID := chi.URLParam(r, "paperId")
+	if paperID == "" {
+		writeError(w, http.StatusBadRequest, "paper_id is required")
+		return
+	}
+
+	ctx := r.Context()
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Check ownership and review status
+	var itemID, createdBy string
+	var reviewerID *string
+	var reviewedAt *string
+	err = tx.QueryRow(ctx,
+		`SELECT rp.item_id, m.created_by, rp.reviewer_id, rp.reviewed_at
+		 FROM research_papers rp
+		 JOIN media_items m ON m.item_id = rp.item_id
+		 WHERE rp.paper_id = $1`,
+		paperID,
+	).Scan(&itemID, &createdBy, &reviewerID, &reviewedAt)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "research paper not found")
+		return
+	}
+
+	if createdBy != userID {
+		writeError(w, http.StatusForbidden, "you can only publish your own research papers")
+		return
+	}
+
+	if reviewerID == nil || reviewedAt == nil {
+		writeError(w, http.StatusBadRequest, "paper must be reviewed before publishing")
+		return
+	}
+
+	// Update status to published
+	_, err = tx.Exec(ctx,
+		`UPDATE media_items SET status = 'published' WHERE item_id = $1`,
+		itemID,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to publish research paper")
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit transaction")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": "research paper published successfully",
 	})
 }

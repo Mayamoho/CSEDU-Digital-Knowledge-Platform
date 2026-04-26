@@ -129,6 +129,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		"pdf": true, "docx": true, "doc": true, "pptx": true, "ppt": true,
 		"xlsx": true, "xls": true, "mp4": true, "mp3": true,
 		"jpg": true, "jpeg": true, "png": true, "gif": true,
+		"zip": true, "apk": true,
 	}
 	if !allowedExts[ext] {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("unsupported file format: %s", ext))

@@ -1,7 +1,17 @@
 // API Client for CSEDU Digital Knowledge Platform
 // Connects to Go API Server (Port 8080)
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+// Use internal Docker network URL for server-side requests, external URL for client-side
+const getApiBaseUrl = () => {
+  // Server-side (during SSR/SSG)
+  if (typeof window === 'undefined') {
+    return process.env.INTERNAL_API_URL || 'http://api:8080/api/v1';
+  }
+  // Client-side (in browser)
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost/api/v1';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export interface User {
   user_id: string;
@@ -145,6 +155,9 @@ export interface StudentProject {
   submitted_at: string;
   approved_by?: string;
   approved_at?: string;
+  web_url?: string;
+  github_repo?: string;
+  app_download?: string;
 }
 
 // AI Chat types
@@ -492,9 +505,27 @@ class APIClient {
     });
   }
 
-  async listResearch(params?: { status?: string }): Promise<{ data: ResearchPaper[]; total: number }> {
+  async updateResearch(paperId: string, data: {
+    title: string;
+    authors: string[];
+    co_authors: string[];
+    abstract: string;
+    keywords: string[];
+    publication_date?: string;
+    doi?: string;
+    journal?: string;
+    conference?: string;
+  }): Promise<{ message: string }> {
+    return this.request(`/research/${paperId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listResearch(params?: { status?: string; for_review?: boolean }): Promise<{ data: ResearchPaper[]; total: number }> {
     const searchParams = new URLSearchParams();
     if (params?.status) searchParams.append('status', params.status);
+    if (params?.for_review) searchParams.append('for_review', 'true');
     return this.request(`/research?${searchParams.toString()}`);
   }
 
@@ -504,6 +535,12 @@ class APIClient {
 
   async submitResearchForReview(paperId: string): Promise<{ message: string }> {
     return this.request(`/research/${paperId}/submit-for-review`, {
+      method: 'POST',
+    });
+  }
+
+  async publishResearch(paperId: string): Promise<{ message: string }> {
+    return this.request(`/research/${paperId}/publish`, {
       method: 'POST',
     });
   }
@@ -524,10 +561,31 @@ class APIClient {
     course_code?: string;
     abstract: string;
     keywords: string[];
-    file_path: string;
+    file_path?: string;
+    web_url?: string;
+    github_repo?: string;
+    app_download?: string;
   }): Promise<{ message: string; project_id: string; item_id: string }> {
     return this.request('/projects', {
       method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateProject(projectId: string, data: {
+    title: string;
+    team_members: string[];
+    supervisor_id?: string;
+    academic_year: number;
+    course_code?: string;
+    abstract: string;
+    keywords: string[];
+    web_url?: string;
+    github_repo?: string;
+    app_download?: string;
+  }): Promise<{ message: string }> {
+    return this.request(`/projects/${projectId}`, {
+      method: 'PUT',
       body: JSON.stringify(data),
     });
   }

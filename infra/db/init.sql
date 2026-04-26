@@ -50,7 +50,8 @@ CREATE TABLE media_items (
 ALTER TABLE media_items
     ADD CONSTRAINT chk_media_format CHECK (format IN (
         'pdf','video','image','audio','docx','doc',
-        'pptx','ppt','xlsx','xls','mp4','mp3','jpg','jpeg','png','gif'
+        'pptx','ppt','xlsx','xls','mp4','mp3','jpg','jpeg','png','gif',
+        'zip','apk','project'
     ));
 
 ALTER TABLE media_items
@@ -274,10 +275,13 @@ CREATE INDEX idx_research_submitted ON research_papers (submitted_at);
 CREATE TABLE student_projects (
     project_id     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     item_id        UUID        NOT NULL UNIQUE REFERENCES media_items(item_id) ON DELETE CASCADE,
-    team_members   UUID[]      NOT NULL DEFAULT '{}',
+    team_members   TEXT[]      NOT NULL DEFAULT '{}',
     supervisor_id  UUID        REFERENCES users(user_id) ON DELETE SET NULL,
     academic_year  INT         NOT NULL,
     course_code    TEXT,
+    web_url        TEXT,
+    github_repo    TEXT,
+    app_download   TEXT,
     approved_by    UUID        REFERENCES users(user_id) ON DELETE SET NULL,
     approved_at    TIMESTAMPTZ,
     submitted_at   TIMESTAMPTZ NOT NULL DEFAULT now()
